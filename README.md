@@ -32,19 +32,20 @@ SourceMind 是一个基于 **LangGraph** 和 **Streamlit** 构建的智能学术
 
 * **📑 综合报告生成**：汇总所有分析维度，生成 Markdown 格式的研读报告。
   * **实时预览**：报告生成完成后立即在界面展示，无需等待后续讨论流程。
-  * **下载支持**：支持下载最终报告及圆桌讨论记录（Markdown 格式）。
+  * **全面下载支持**：支持一键下载 **翻译、要点、实验、术语、相关搜索、最终报告及圆桌讨论记录** 等所有生成内容。
 
 * **🤖 灵活的模型配置**：
   * 支持 **OpenAI**, **Anthropic**, **OpenRouter** 及 **自定义 OpenAI 兼容接口**（如 Ollama, vLLM）。
   * **细粒度控制**：可为翻译、搜索总结、视觉解析、对话评审等不同任务单独配置特定的模型。
 
-* **🔭 全链路可观测性**：集成 **Langfuse** **LangSmith**，支持对 LangGraph 工作流及内部 LLM 调用的完整追踪与可视化。
+* **🔭 全链路可观测性**：集成 **Langfuse** 与 **LangSmith**，支持对 LangGraph 工作流及内部 LLM 调用的完整追踪与可视化。
 
 ## 🛠️ 技术栈
 
 * **Workflow Orchestration**: [LangGraph](https://github.com/langchain-ai/langgraph)
 * **LLM Integration**: [LangChain](https://github.com/langchain-ai/langchain)
 * **User Interface**: [Streamlit](https://streamlit.io/)
+* **Database**: [SQLite](https://www.sqlite.org/) (本地历史记录存储)
 * **Observability**: [Langfuse](https://langfuse.com/), [LangSmith](https://smith.langchain.com/)
 * **PDF Parsing**: [PyMuPDF4LLM](https://github.com/pymupdf/PyMuPDF) / Custom VLM Parser
 
@@ -139,7 +140,9 @@ SourceMind/
 │   ├── loader.py       # PDF 加载与解析逻辑 (含 VLM 实现)
 │   ├── model_utils.py  # 模型实例化、回调管理与配置
 │   ├── prompts.py      # Prompt 模板管理
-│   └── state.py        # LangGraph 状态定义
+│   ├── state.py        # LangGraph 状态定义
+│   └── history.py      # 历史记录管理 (SQLite CRUD)
+├── history_data/       # 历史记录存储目录 (自动生成)
 ├── .env.example        # 环境变量示例
 └── requirements.txt    # 项目依赖
 ```
