@@ -1,10 +1,12 @@
 import streamlit as st
 import os
 import time
+import datetime
 from dotenv import load_dotenv
 from src.graph import create_graph
 from src.nodes import review_dialogue_node
 from src.model_utils import get_llm
+from src.history import HistoryManager
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -242,7 +244,93 @@ def main():
         st.session_state.execution_logs = []
     if "round_table_running" not in st.session_state:
         st.session_state.round_table_running = False
+        
+    # --- Initialize History Manager ---
+    if "history_manager" not in st.session_state:
+        st.session_state.history_manager = HistoryManager()
+        
+    # --- Navigation ---
+    # Check for pending navigation request
+    if "_pending_app_mode" in st.session_state:
+        st.session_state.app_mode = st.session_state._pending_app_mode
+        del st.session_state._pending_app_mode
+        # Rerun to reflect the change in the widget immediately
+        st.rerun()
 
+    if "app_mode" not in st.session_state:
+        st.session_state.app_mode = "新分析"
+
+    with st.sidebar:
+        st.divider()
+        st.radio(
+            "功能导航", 
+            ["新分析", "历史记录"], 
+            key="app_mode"
+        )
+
+    if st.session_state.app_mode == "历史记录":
+        st.header("📜 历史记录")
+        
+        # Search & Filter
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            search_query = st.text_input("搜索历史记录 (标题/关键词)", placeholder="输入关键词...")
+        with col2:
+            sort_order = st.selectbox("排序", ["最新在前", "最早在前"])
+            
+        order_sql = "DESC" if sort_order == "最新在前" else "ASC"
+        
+        if search_query:
+            history_list = st.session_state.history_manager.search_history(search_query)
+        else:
+            history_list = st.session_state.history_manager.get_all_history(order=order_sql)
+            
+        if not history_list:
+            st.info("暂无历史记录")
+        else:
+            for record in history_list:
+                with st.expander(f"{record['timestamp'][:16]} - {record['title'][:50]}"):
+                    st.markdown(f"**来源**: {record['source_name']} ({record['source_type']})")
+                    st.markdown(f"**摘要**: {record['summary']}")
+                    
+                    c1, c2, c3 = st.columns([1, 1, 4])
+                    with c1:
+                        if st.button("👀 查看", key=f"view_{record['id']}"):
+                            # Load state
+                            loaded_state = st.session_state.history_manager.get_analysis_by_id(record['id'])
+                            if loaded_state:
+                                st.session_state.analysis_result = loaded_state
+                                st.session_state.analysis_running = False
+                                
+                                st.toast(f"已加载历史记录: {record['title']}")
+                                
+                                # Use pending state mechanism to safely switch tabs
+                                st.session_state._pending_app_mode = "新分析"
+                                st.rerun()
+                            else:
+                                st.error("无法加载记录")
+                    
+                    with c2:
+                        if st.button("🗑️ 删除", key=f"del_{record['id']}"):
+                            if st.session_state.history_manager.delete_analysis(record['id']):
+                                st.success("删除成功")
+                                st.rerun()
+                            else:
+                                st.error("删除失败")
+                    
+                    with c3:
+                        # Export
+                        if st.button("📤 导出JSON", key=f"export_{record['id']}"):
+                            try:
+                                path = st.session_state.history_manager.export_history_to_file(record['id'], "json")
+                                st.success(f"已导出: {path}")
+                            except Exception as e:
+                                st.error(f"导出失败: {e}")
+                                
+        # Stop execution here if in History mode
+        return
+
+    # --- New Analysis Mode (Original Logic) ---
     def start_analysis():
         # Validate inputs
         input_type = st.session_state.get("input_type_radio")
@@ -519,6 +607,14 @@ def main():
                 if "stream_container" in st.session_state:
                     del st.session_state.stream_container
 
+                # Save to History
+                try:
+                    record_id = st.session_state.history_manager.save_analysis(final_state)
+                    st.toast(f"✅ 分析结果已自动保存到历史记录 (ID: {record_id[:8]})")
+                except Exception as save_err:
+                    st.error(f"⚠️ 自动保存失败: {save_err}")
+                    print(f"Auto-save failed: {save_err}")
+
                 # Store result
                 st.session_state.analysis_result = final_state
                 st.session_state.analysis_running = False
@@ -549,7 +645,10 @@ def main():
                 
         # Related Work Tab
         with tab_map["related_work_search"]:
-            st.markdown(final_state.get("related_work_search", "暂无内容或未配置搜索 Key"))
+            rw_content = final_state.get("related_work_search", "暂无内容或未配置搜索 Key")
+            st.markdown(rw_content)
+            if rw_content and "暂无内容" not in rw_content:
+                st.download_button("下载相关搜索", rw_content, "related_work.md", "text/markdown")
 
         with tab_map["review_dialogue"]:
             content = final_state.get("review_dialogue", "")
@@ -606,16 +705,28 @@ def main():
                             del st.session_state.stream_container
 
         with tab_map["translation"]:
-            st.markdown(final_state.get("translation", "暂无内容"))
+            trans_content = final_state.get("translation", "暂无内容")
+            st.markdown(trans_content)
+            if trans_content and trans_content != "暂无内容":
+                st.download_button("下载论文翻译", trans_content, "translation.md", "text/markdown")
             
         with tab_map["key_points"]:
-            st.markdown(final_state.get("key_points", "暂无内容"))
+            kp_content = final_state.get("key_points", "暂无内容")
+            st.markdown(kp_content)
+            if kp_content and kp_content != "暂无内容":
+                st.download_button("下载论文要点", kp_content, "key_points.md", "text/markdown")
             
         with tab_map["experiments"]:
-            st.markdown(final_state.get("experiments", "暂无内容"))
+            exp_content = final_state.get("experiments", "暂无内容")
+            st.markdown(exp_content)
+            if exp_content and exp_content != "暂无内容":
+                st.download_button("下载论文实验", exp_content, "experiments.md", "text/markdown")
             
         with tab_map["terms"]:
-            st.markdown(final_state.get("terms", "暂无内容"))
+            terms_content = final_state.get("terms", "暂无内容")
+            st.markdown(terms_content)
+            if terms_content and terms_content != "暂无内容":
+                st.download_button("下载专业术语", terms_content, "terms.md", "text/markdown")
             
         with tab_map["figures"]:
             figures = final_state.get("figures", [])

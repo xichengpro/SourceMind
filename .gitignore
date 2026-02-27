@@ -47,6 +47,8 @@ wheels/
 /logs/
 pomltrace/
 /temp/
+history_data/
+tests/
 
 # IDEs and editors
 .idea/
